@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Wall Clock</title>
+    <!-- Using Tailwind CSS for lightweight, utility-based styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom font stacks using system fonts for zero-load-time performance */
+        body {
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            transition: background-color 0.5s ease;
+        }
+        
+        /* Monospaced numbers prevent layout shifting every second */
+        .time-display {
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.02em;
+        }
+
+        /* Smooth fade for idle controls */
+        .fade-transition {
+            transition: opacity 0.4s ease-in-out;
+        }
+
+        /* Helper class injected by JS when idle */
+        .cursor-hidden {
+            cursor: none;
+        }
+    </style>
+</head>
+<body class="bg-black text-white h-screen w-screen overflow-hidden flex flex-col items-center justify-center m-0 select-none">
+
+    <!-- Main Clock Container -->
+    <div class="flex flex-col items-center justify-center w-full px-4 text-center">
+        <!-- Time -->
+        <div class="flex items-baseline space-x-2 md:space-x-4">
+            <h1 id="time" class="time-display font-bold leading-none text-[20vw] sm:text-[18vw] tracking-tighter drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]">
+                00:00:00
+            </h1>
+            <span id="ampm" class="text-[5vw] sm:text-[4vw] font-medium text-gray-400 hidden">AM</span>
+        </div>
+        
+        <!-- Date -->
+        <h2 id="date" class="text-[4vw] sm:text-[3vw] lg:text-[2vw] font-medium text-gray-400 mt-2 sm:mt-0 tracking-wide uppercase">
+            Loading Date...
+        </h2>
+    </div>
+
+    <!-- Floating Controls (Auto-hides on idle) -->
+    <div id="controls" class="fade-transition fixed bottom-6 right-6 flex space-x-3 bg-gray-900/50 backdrop-blur-md p-3 rounded-2xl border border-gray-700/50 shadow-2xl z-50">
+        
+        <!-- Toggle 12/24 Hour -->
+        <button id="formatToggle" class="p-3 rounded-xl hover:bg-gray-700/70 transition-colors text-gray-300 hover:text-white" title="Toggle 12/24 Hour Format">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+        </button>
+
+        <!-- Change Color Theme -->
+        <button id="colorToggle" class="p-3 rounded-xl hover:bg-gray-700/70 transition-colors text-gray-300 hover:text-white" title="Change Color Theme">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path>
+            </svg>
+        </button>
+
+        <!-- Toggle Fullscreen -->
+        <button id="fullscreenToggle" class="p-3 rounded-xl hover:bg-gray-700/70 transition-colors text-gray-300 hover:text-white" title="Toggle Fullscreen">
+            <svg id="fs-icon-enter" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+            </svg>
+            <svg id="fs-icon-exit" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden">
+                <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"></path>
+            </svg>
+        </button>
+    </div>
+
+    <script>
+        // --- State ---
+        let is24Hour = false;
+        
+        // Theme Colors (Tailwind text color classes)
+        const themes = [
+            'text-white',
+            'text-emerald-400',
+            'text-sky-400',
+            'text-amber-400',
+            'text-rose-400',
+            'text-fuchsia-400'
+        ];
+        let currentThemeIndex = 0;
+
+        // DOM Elements
+        const timeEl = document.getElementById('time');
+        const ampmEl = document.getElementById('ampm');
+        const dateEl = document.getElementById('date');
+        const controlsEl = document.getElementById('controls');
+        
+        // --- Clock Logic ---
+        function updateClock() {
+            const now = new Date();
+            
+            // Time
+            let hours = now.getHours();
+            let minutes = now.getMinutes();
+            let seconds = now.getSeconds();
+            let ampm = '';
+
+            if (!is24Hour) {
+                ampm = hours >= 12 ? 'PM' : 'AM';
+                hours = hours % 12;
+                hours = hours ? hours : 12; // the hour '0' should be '12'
+                ampmEl.textContent = ampm;
+                ampmEl.classList.remove('hidden');
+            } else {
+                ampmEl.classList.add('hidden');
+            }
+
+            // Pad with zeroes
+            hours = hours.toString().padStart(2, '0');
+            minutes = minutes.toString().padStart(2, '0');
+            seconds = seconds.toString().padStart(2, '0');
+
+            timeEl.textContent = `${hours}:${minutes}:${seconds}`;
+
+            // Date
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            dateEl.textContent = now.toLocaleDateString(undefined, options);
+        }
+
+        // Initialize clock and set interval
+        updateClock();
+        setInterval(updateClock, 1000);
+
+        // --- Event Listeners ---
+
+        // Format Toggle
+        document.getElementById('formatToggle').addEventListener('click', () => {
+            is24Hour = !is24Hour;
+            updateClock();
+        });
+
+        // Color Toggle
+        document.getElementById('colorToggle').addEventListener('click', () => {
+            timeEl.classList.remove(themes[currentThemeIndex]);
+            currentThemeIndex = (currentThemeIndex + 1) % themes.length;
+            timeEl.classList.add(themes[currentThemeIndex]);
+            
+            // Adjust glow based on color
+            if (currentThemeIndex === 0) {
+                timeEl.style.filter = '';
+            } else {
+                // Add a subtle bloom to colored text
+                timeEl.style.filter = 'drop-shadow(0 0 20px currentColor)';
+            }
+        });
+
+        // Fullscreen Toggle
+        const fsEnterIcon = document.getElementById('fs-icon-enter');
+        const fsExitIcon = document.getElementById('fs-icon-exit');
+
+        function toggleFullScreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.log(`Error attempting to enable fullscreen: ${err.message}`);
+                });
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+
+        document.getElementById('fullscreenToggle').addEventListener('click', toggleFullScreen);
+
+        // Listen for fullscreen changes to update the icon
+        document.addEventListener('fullscreenchange', () => {
+            if (document.fullscreenElement) {
+                fsEnterIcon.classList.add('hidden');
+                fsExitIcon.classList.remove('hidden');
+            } else {
+                fsEnterIcon.classList.remove('hidden');
+                fsExitIcon.classList.add('hidden');
+            }
+        });
+
+        // --- Idle Mouse/Touch Hiding Logic ---
+        let idleTimer;
+        
+        function resetIdleTimer() {
+            // Show controls and cursor
+            document.body.classList.remove('cursor-hidden');
+            controlsEl.style.opacity = '1';
+            controlsEl.style.pointerEvents = 'auto';
+
+            clearTimeout(idleTimer);
+            
+            // Hide after 3 seconds of inactivity
+            idleTimer = setTimeout(() => {
+                document.body.classList.add('cursor-hidden');
+                controlsEl.style.opacity = '0';
+                controlsEl.style.pointerEvents = 'none';
+            }, 3000);
+        }
+
+        // Track user interaction to reset idle state
+        ['mousemove', 'mousedown', 'touchstart', 'keydown'].forEach(evt => 
+            document.addEventListener(evt, resetIdleTimer, false)
+        );
+
+        // Initial trigger to start the hide countdown
+        resetIdleTimer();
+
+    </script>
+</body>
+</html>
